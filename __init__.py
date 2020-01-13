@@ -4,11 +4,11 @@
 Default theme for Maverick
 """
 
-from Maverick.Template import Template, Pager
+from Maverick.Template import Template
 from Maverick.Content import ContentList, group_by_category, group_by_tagname
 from Maverick.Utils import logged_func, gen_hash, unify_joinpath, copytree
 from Maverick.Utils import safe_write, safe_read
-from .utils import tr, build_navs, build_links, filterPrefix
+from .utils import tr, build_navs, build_links
 
 import os
 import re
@@ -28,13 +28,6 @@ class Galileo(Template):
         self._env.globals['len'] = len
         self._env.globals['build_navs'] = build_navs
         self._env.globals['build_links'] = build_links
-        self._env.globals['get_path'] = filterPrefix
-
-        try:
-            from Maverick.Markdown import g_hooks
-            g_hooks.add_hook('output_image', self.output_image)
-        except BaseException:
-            pass
 
         self.build_search_cache()
         self.gather_meta()
@@ -65,24 +58,6 @@ class Galileo(Template):
             copytree(source_dir, dist_dir)
         copy_assets('assets', 'assets')
 
-    def output_image(self, image):
-        figcaption = image['title'] or image['alt'] or ''
-
-        src = image['src']
-
-        style = ''
-        attr = ''
-        if image['width'] != -1 and image['height'] != -1:
-            style = 'style="flex: %s"' % str(image['width'] * 50 / image['height'])
-        else:
-            attr = 'size-undefined'
-
-        if figcaption != "":
-            figcaption = '<figcaption>%s</figcaption>' % figcaption
-
-        return '<figure %s %s><img width="%s" height="%s" src="%s" />%s</figure>' \
-            % (style, attr, image['width'], image['height'], src, figcaption)
-
     def gather_meta(self):
         self._tags = set()
         self._categories = set()
@@ -93,33 +68,43 @@ class Galileo(Template):
 
     @logged_func('')
     def build_index(self):
-        pager = Pager(self._posts, self._config.index_page_size)
-        total_pages = pager.get_total_pages()
+        page_size = self._config.index_page_size
+        total_contents = len(self._posts)
+        total_pages = math.ceil(total_contents / page_size)
 
-        for current_page, current_list in pager:
-            _, local_path = self._router.gen("index", "", current_page)
+        for page in range(0, total_pages):
+            current_list = self._posts[page * page_size:min((page+1)*page_size,
+                                                            total_contents)]
+
+            _, local_path = self._router.gen("index", "", page+1)
             local_path += "index.html"
 
             template = self._env.get_template("index.html")
             output = template.render(
                 content_list=current_list,
-                current_page=current_page,
+                current_page=page+1,
                 max_pages=total_pages)
             safe_write(local_path, output)
 
     @logged_func('')
     def build_archives(self):
-        pager = Pager(self._posts, self._config.archives_page_size)
-        total_pages = pager.get_total_pages()
+        # paging by config.archives_page_size
+        page_size = self._config.archives_page_size
+        total_contents = len(self._posts)
+        total_pages = math.ceil(total_contents / page_size)
 
-        for current_page, current_list in pager:
-            _, local_path = self._router.gen("archives", "", current_page)
+        for page in range(0, total_pages):
+            current_list = \
+                self._posts[page *
+                            page_size:min((page+1)*page_size, total_contents)]
+
+            _, local_path = self._router.gen("archives", "", page+1)
             local_path += "index.html"
 
             template = self._env.get_template("archives.html")
             output = template.render(
                 content_list=current_list,
-                current_page=current_page,
+                current_page=page+1,
                 max_pages=total_pages)
             safe_write(local_path, output)
 
@@ -128,18 +113,24 @@ class Galileo(Template):
         for tag in self._tags:
             posts = self._posts.re_group(group_by_tagname(tag))
 
-            pager = Pager(posts, self._config.archives_page_size)
-            total_pages = pager.get_total_pages()
+            page_size = self._config.archives_page_size
+            total_pages = math.ceil(len(posts) / page_size)
 
-            for current_page, current_list in pager:
-                _, local_path = self._router.gen("tag", tag, current_page)
+            for page in range(0, total_pages):
+                current_list = \
+                    posts[page * page_size:min(
+                        (page+1)*page_size, len(posts))]
+
+                _, local_path = self._router.gen("tag", tag, page+1)
+                if not os.path.exists(local_path):
+                    os.makedirs(local_path)
                 local_path += "index.html"
 
                 template = self._env.get_template("tags.html")
                 output = template.render(
                     tag_name=tag,
                     content_list=current_list,
-                    current_page=current_page,
+                    current_page=page+1,
                     max_pages=total_pages)
                 safe_write(local_path, output)
 
@@ -148,18 +139,22 @@ class Galileo(Template):
         for category in self._categories:
             posts = self._posts.re_group(group_by_category(category))
 
-            pager = Pager(posts, self._config.archives_page_size)
-            total_pages = pager.get_total_pages()
+            page_size = self._config.archives_page_size
+            total_pages = math.ceil(len(posts) / page_size)
 
-            for current_page, current_list in pager:
-                _, local_path = self._router.gen("category", category, current_page)
+            for page in range(0, total_pages):
+                current_list = \
+                    posts[page * page_size:min(
+                        (page+1)*page_size, len(posts))]
+
+                _, local_path = self._router.gen("category", category, page+1)
                 local_path += "index.html"
 
                 template = self._env.get_template("categories.html")
                 output = template.render(
                     cate_name=category,
                     content_list=current_list,
-                    current_page=current_page,
+                    current_page=page+1,
                     max_pages=total_pages)
                 safe_write(local_path, output)
 
